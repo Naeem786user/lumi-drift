@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lumi Drift</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{margin:0;height:100%;background:#05030f;overflow:hidden;touch-action:none}
+#g{width:100%;height:100%}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
+</head><body><div id="g"></div>
+<script>
+const W=360,H=640,LX=[45,135,225,315],PY=500;
+const LV=[
+ {goal:8,sp:190,gap:850,decay:7,name:'Whisper Tunnel'},
+ {goal:12,sp:250,gap:680,decay:9,name:'Hollow Mines'},
+ {goal:16,sp:310,gap:540,decay:11,name:'Void Heart'}];
+const F='monospace';
+class Main extends Phaser.Scene{
+ create(){
+  let g=this.add.graphics();
+  g.fillStyle(0xffffff).fillCircle(8,8,8);g.generateTexture('dot',16,16);g.clear();
+  const pts=[{x:14,y:0},{x:26,y:16},{x:14,y:32},{x:2,y:16}];
+  g.fillStyle(0x6be8ff).fillPoints(pts,true);g.lineStyle(2,0xffffff).strokePoints(pts,true);
+  g.generateTexture('shard',28,32);g.clear();
+  g.fillStyle(0x1a0830).fillCircle(20,20,18);g.lineStyle(3,0xb0206a).strokeCircle(20,20,18);
+  g.fillStyle(0xff3355).fillCircle(13,17,3).fillCircle(27,17,3);
+  g.generateTexture('shade',40,40);g.destroy();
+  const c=this.textures.createCanvas('glow',256,256),x=c.getContext();
+  const gr=x.createRadialGradient(128,128,0,128,128,128);
+  gr.addColorStop(0,'rgba(255,240,180,0.9)');gr.addColorStop(.5,'rgba(255,200,90,0.25)');gr.addColorStop(1,'rgba(255,200,90,0)');
+  x.fillStyle=gr;x.fillRect(0,0,256,256);c.refresh();
+  this.stars=[];
+  for(let i=0;i<50;i++){const s=this.add.image(Phaser.Math.Between(0,W),Phaser.Math.Between(0,H),'dot').setScale(Phaser.Math.FloatBetween(.08,.2)).setAlpha(.4);s.v=Phaser.Math.Between(20,70);this.stars.push(s);}
+  const lg=this.add.graphics().lineStyle(1,0x2a1f4d,.6);
+  [0,90,180,270,360].forEach(v=>lg.lineBetween(v,0,v,H));
+  this.glow=this.add.image(LX[1],PY,'glow').setBlendMode('ADD').setDepth(5);
+  this.pl=this.add.image(LX[1],PY,'dot').setTint(0xfff1b0).setDepth(10);
+  this.add.particles(0,0,'dot',{follow:this.pl,speed:{min:10,max:40},angle:{min:80,max:100},lifespan:500,scale:{start:.5,end:0},alpha:{start:.8,end:0},blendMode:'ADD',tint:0xffc860,frequency:25}).setDepth(9);
+  this.fx=this.add.particles(0,0,'dot',{emitting:false,speed:{min:60,max:180},lifespan:500,scale:{start:.5,end:0},blendMode:'ADD'}).setDepth(11);
+  this.hud=this.add.text(10,10,'',{fontFamily:F,fontSize:'15px',color:'#ffe9a8'}).setDepth(20);
+  this.bar=this.add.graphics().setDepth(20);
+  this.items=[];this.lane=1;this.light=230;this.got=0;this.level=0;this.timer=0;
+  this.input.on('pointerdown',p=>this.tap(p));
+  const k=this.input.keyboard;
+  ['LEFT','A'].forEach(n=>k.on('keydown-'+n,()=>this.move(-1)));
+  ['RIGHT','D'].forEach(n=>k.on('keydown-'+n,()=>this.move(1)));
+  k.on('keydown-SPACE',()=>this.tap({x:0}));
+  this.banner('LUMI DRIFT','You are the last light.\nTap left / right to switch lanes.\nCatch the cyan shards to stay alive.\nShades hide in the dark.\n\nTap to begin',()=>this.start(0));
+ }
+ banner(t,s,cb){
+  this.mode='banner';this.cb=cb;this.lock=this.time.now+400;
+  this.bt=this.add.text(W/2,230,t,{fontFamily:F,fontSize:'32px',color:'#ffd86b',align:'center'}).setOrigin(.5).setDepth(30);
+  this.bs=this.add.text(W/2,340,s,{fontFamily:F,fontSize:'15px',color:'#ddd',align:'center',lineSpacing:6}).setOrigin(.5).setDepth(30);
+ }
+ tap(p){
+  if(this.mode==='banner'){
+   if(this.time.now<this.lock)return;
+   this.bt.destroy();this.bs.destroy();this.cb();
+  }else if(this.mode==='play')this.move(p.x<W/2?-1:1);
+ }
+ move(d){
+  if(this.mode!=='play')return;
+  this.lane=Phaser.Math.Clamp(this.lane+d,0,3);
+  this.tweens.add({targets:this.pl,x:LX[this.lane],duration:90});
+ }
+ start(i){
+  this.level=i;this.items.forEach(o=>o.o.destroy());this.items=[];
+  this.got=0;this.light=230;this.lane=1;this.pl.x=LX[1];this.timer=0;this.mode='play';
+  const t=this.add.text(W/2,200,'LEVEL '+(i+1)+'\n'+LV[i].name,{fontFamily:F,fontSize:'24px',color:'#fff',align:'center'}).setOrigin(.5).setDepth(30);
+  this.tweens.add({targets:t,alpha:0,delay:900,duration:600,onComplete:()=>t.destroy()});
+ }
+ spawn(){
+  const L=Phaser.Utils.Array.Shuffle([0,1,2,3]);
+  const n=Phaser.Math.Between(1,Math.min(3,1+this.level));
+  for(let i=0;i<n;i++)this.add1(L[i],'shade');
+  if(n<4&&Math.random()<.75)this.add1(L[n],'shard');
+ }
+ add1(lane,type){
+  const o=this.add.image(LX[lane],-30,type).setDepth(6);
+  if(type==='shard')this.tweens.add({targets:o,angle:{from:-12,to:12},yoyo:true,repeat:-1,duration:500});
+  this.items.push({o,lane,type});
+ }
+ update(t,dt){
+  const s=dt/1000;
+  this.stars.forEach(a=>{a.y+=a.v*s*(this.mode==='play'?3:1);if(a.y>H)a.y=0;});
+  if(this.mode!=='play')return;
+  const L=LV[this.level];
+  this.light-=L.decay*s;
+  this.timer+=dt;if(this.timer>L.gap){this.timer=0;this.spawn();}
+  for(let i=this.items.length-1;i>=0;i--){
+   const it=this.items[i],o=it.o;o.y+=L.sp*s;
+   const d=Phaser.Math.Distance.Between(o.x,o.y,this.pl.x,this.pl.y);
+   o.alpha=it.type==='shade'?Phaser.Math.Clamp(1-d/(this.light*1.1),.05,1):Phaser.Math.Clamp(1-d/(this.light*1.6),.3,1);
+   if(it.lane===this.lane&&Math.abs(o.y-PY)<28){
+    if(it.type==='shard'){this.got++;this.light=Math.min(240,this.light+35);this.fx.setParticleTint(0x6be8ff);}
+    else{this.light-=45;this.fx.setParticleTint(0xff3355);this.cameras.main.shake(150,.012);}
+    this.fx.explode(14,o.x,o.y);o.destroy();this.items.splice(i,1);continue;
+   }
+   if(o.y>H+40){o.destroy();this.items.splice(i,1);}
+  }
+  const r=Math.max(this.light,0);
+  this.glow.x=this.pl.x;this.glow.y=this.pl.y;
+  this.glow.setScale(Phaser.Math.Linear(this.glow.scale,r/128*1.2,.15));
+  this.hud.setText('L'+(this.level+1)+' '+L.name+'   Shards '+this.got+'/'+L.goal);
+  this.bar.clear().fillStyle(0x2a1f4d).fillRect(10,36,120,8).fillStyle(r<80?0xff3355:0xffd86b).fillRect(10,36,120*Math.min(r/240,1),8);
+  if(this.light<45){
+   this.mode='over';
+   this.banner('LIGHTS OUT','The dark swallowed you.\n\nTap to retry',()=>this.start(this.level));
+  }else if(this.got>=L.goal){
+   this.mode='over';
+   if(this.level<LV.length-1)this.banner('LEVEL CLEAR','Faster. Darker.\n\nTap for next level',()=>this.start(this.level+1));
+   else this.banner('THE TUNNEL GLOWS','You carried the light home.\n\nTap to play again',()=>this.start(0));
+  }
+ }
+}
+new Phaser.Game({type:Phaser.AUTO,parent:'g',backgroundColor:'#05030f',
+ scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH,width:W,height:H},scene:Main});
+</script></body></html>
